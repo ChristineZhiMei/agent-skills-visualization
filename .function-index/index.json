@@ -1,0 +1,134 @@
+{
+  "path": "",
+  "description": "项目根：Electron + Vue 3 技能关系可视化桌面应用",
+  "confidence": "medium",
+  "source": "提交信息",
+  "children": [
+    {
+      "path": ".vscode",
+      "description": "IDE 配置（VSCode 扩展推荐、启动、设置）",
+      "confidence": "low",
+      "source": "目录推断"
+    },
+    {
+      "path": "build",
+      "description": "构建资源：图标、macOS entitlements 等",
+      "confidence": "low",
+      "source": "目录推断"
+    },
+    {
+      "path": "resources",
+      "description": "静态资源（如图标）",
+      "confidence": "low",
+      "source": "目录推断"
+    },
+    {
+      "path": "specs",
+      "description": "需求与设计文档目录",
+      "confidence": "low",
+      "source": "目录推断",
+      "children": [
+        {
+          "path": "specs/agent-skills-visualization",
+          "description": "本应用需求、设计文档与决策记录",
+          "confidence": "medium",
+          "source": "目录推断"
+        }
+      ]
+    },
+    {
+      "path": "src",
+      "description": "源码目录：主进程、预加载、渲染进程",
+      "confidence": "low",
+      "source": "目录推断",
+      "children": [
+        {
+          "path": "src/main",
+          "description": "Electron 主进程：窗口创建、生命周期、安全策略",
+          "confidence": "medium",
+          "source": "目录推断"
+        },
+        {
+          "path": "src/preload",
+          "description": "预加载脚本：contextBridge 暴露 API、类型声明",
+          "confidence": "medium",
+          "source": "目录推断"
+        },
+        {
+          "path": "src/renderer",
+          "description": "渲染进程：Vue 3 前端入口与资源",
+          "confidence": "low",
+          "source": "目录推断",
+          "children": [
+            {
+              "path": "src/renderer/src",
+              "description": "渲染进程前端源码：App、组件、视图、数据与类型",
+              "confidence": "low",
+              "source": "目录推断",
+              "children": [
+                {
+                  "path": "src/renderer/src/assets",
+                  "description": "静态资源（CSS、SVG 等）",
+                  "confidence": "low",
+                  "source": "目录推断"
+                },
+                {
+                  "path": "src/renderer/src/components",
+                  "description": "UI 组件：技能侧栏（SkillSidebar）、版本信息（Versions）、通用 UI（button/input/native-select/scroll-area）",
+                  "confidence": "medium",
+                  "source": "源码验证",
+                  "children": [
+                    {
+                      "path": "src/renderer/src/components/ui",
+                      "description": "通用 UI 组件：按钮、输入、原生选择器、滚动区域",
+                      "confidence": "medium",
+                      "source": "源码验证",
+                      "children": [
+                        {
+                          "path": "src/renderer/src/components/ui/native-select",
+                          "description": "原生 select 封装（NativeSelect / NativeSelectOptGroup / NativeSelectOption），用于缩放预设等下拉",
+                          "confidence": "medium",
+                          "source": "源码验证"
+                        },
+                        {
+                          "path": "src/renderer/src/components/ui/scroll-area",
+                          "description": "滚动区域封装（ScrollArea）",
+                          "confidence": "low",
+                          "source": "目录推断"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "path": "src/renderer/src/data",
+                  "description": "模拟数据：图谱、侧栏 mock",
+                  "confidence": "medium",
+                  "source": "目录推断"
+                },
+                {
+                  "path": "src/renderer/src/lib",
+                  "description": "工具函数（如 utils）",
+                  "confidence": "low",
+                  "source": "目录推断"
+                },
+                {
+                  "path": "src/renderer/src/types",
+                  "description": "类型定义：图谱、侧栏、别名等",
+                  "confidence": "medium",
+                  "source": "目录推断"
+                },
+                {
+                  "path": "src/renderer/src/views",
+                  "description": "视图：技能关系图谱（GraphView.vue，力导向、平移缩放、节点与边、缩放比例显示保留两位小数）",
+                  "confidence": "medium",
+                  "source": "源码验证"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
