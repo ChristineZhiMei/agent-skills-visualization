@@ -6,7 +6,10 @@ import type { AliasCache } from '../types/aliases'
 import Button from './ui/button.vue'
 import Input from './ui/input.vue'
 import { ScrollArea } from './ui/scroll-area'
-import { Plus, Minus, Check, X, RefreshCw } from 'lucide-vue-next'
+import { Plus, Minus, Check, X, RefreshCw, FilePlus } from 'lucide-vue-next'
+
+/** 虚拟文件夹 path：用于存放「新建技能」对话框中创建、未写入磁盘的技能 */
+const VIRTUAL_NEW_SKILLS_PATH = '__new_skills__'
 
 const SIDE_INSET = 16
 const TOP_INSET = 72
@@ -47,6 +50,11 @@ const refreshLoading = ref(false)
 /** 添加文件夹对话框：支持手动填写路径与选择文件夹 */
 const addDialogOpen = ref(false)
 const addDialogPath = ref('')
+
+/** 新建技能对话框 */
+const newSkillDialogOpen = ref(false)
+const newSkillName = ref('')
+const newSkillDescription = ref('')
 
 /** 最大宽度：屏幕宽度的 2/3 */
 const maxWidthPx = computed(() => Math.floor(window.innerWidth * (2 / 3)))
@@ -212,6 +220,49 @@ function onAddDialogCancel() {
   addDialogPath.value = ''
 }
 
+/** 新建：打开新建技能对话框 */
+function onNewSkill() {
+  if (isDeleteMode.value) return
+  newSkillName.value = ''
+  newSkillDescription.value = ''
+  newSkillDialogOpen.value = true
+}
+
+/** 新建技能对话框 - 创建：写入虚拟文件夹并更新列表 */
+function onNewSkillConfirm() {
+  const name = newSkillName.value.trim()
+  if (!name) return
+  const description = newSkillDescription.value.trim()
+  const existing = props.folders.find((f) => f.path === VIRTUAL_NEW_SKILLS_PATH)
+  const newSkill = { name, description }
+  if (existing) {
+    emit(
+      'update:folders',
+      props.folders.map((f) =>
+        f.path === VIRTUAL_NEW_SKILLS_PATH
+          ? { path: VIRTUAL_NEW_SKILLS_PATH, skills: [...f.skills, newSkill] }
+          : f
+      )
+    )
+  } else {
+    emit('update:alias', VIRTUAL_NEW_SKILLS_PATH, '新建技能')
+    emit('update:folders', [
+      ...props.folders,
+      { path: VIRTUAL_NEW_SKILLS_PATH, skills: [newSkill] }
+    ])
+  }
+  expandedPaths.value = new Set([...expandedPaths.value, VIRTUAL_NEW_SKILLS_PATH])
+  newSkillDialogOpen.value = false
+  newSkillName.value = ''
+  newSkillDescription.value = ''
+}
+
+function onNewSkillDialogCancel() {
+  newSkillDialogOpen.value = false
+  newSkillName.value = ''
+  newSkillDescription.value = ''
+}
+
 /** 减号：进入删除模式（加号→对勾，减号→叉）；再次点减号取消删除模式 */
 function onMinusOrCancel() {
   if (isDeleteMode.value) {
@@ -246,13 +297,14 @@ function isSelectedToDelete(path: string) {
   return selectedToDelete.value.has(path)
 }
 
-/** 刷新：根据当前一层目录重新读取各目录下 SKILL.md，更新二级技能列表 */
+/** 刷新：根据当前一层目录重新读取各目录下 SKILL.md，更新二级技能列表；虚拟文件夹不扫描、原样保留 */
 async function onRefresh() {
   if (refreshLoading.value || props.folders.length === 0 || !window.api?.scanFolderForSkills) return
   refreshLoading.value = true
   try {
     const next = await Promise.all(
       props.folders.map(async (f) => {
+        if (f.path === VIRTUAL_NEW_SKILLS_PATH) return f
         const res = await window.api!.scanFolderForSkills(f.path)
         return { path: res.path, skills: res.skills }
       })
@@ -398,6 +450,17 @@ function resetSkillAlias(folderPath: string, skillName: string) {
                 "
               />
               <div class="flex shrink-0 gap-1">
+                <Button
+                  v-if="!isDeleteMode"
+                  variant="outline"
+                  size="icon"
+                  class="skill-panel__btn-square h-9 w-9"
+                  aria-label="新建技能"
+                  title="新建技能"
+                  @click="onNewSkill"
+                >
+                  <FilePlus class="size-4" />
+                </Button>
                 <Button
                   v-if="!isDeleteMode"
                   variant="default"
@@ -666,6 +729,55 @@ function resetSkillAlias(folderPath: string, skillName: string) {
           </div>
         </div>
       </Transition>
+
+      <!-- 新建技能对话框 -->
+      <Transition name="skill-panel-fade">
+        <div
+          v-if="newSkillDialogOpen"
+          class="skill-add-dialog"
+          role="dialog"
+          aria-labelledby="skill-new-skill-dialog-title"
+          aria-modal="true"
+          @click.self="onNewSkillDialogCancel"
+        >
+          <div class="skill-add-dialog__box">
+            <h3 id="skill-new-skill-dialog-title" class="skill-add-dialog__title">新建技能</h3>
+            <p class="skill-add-dialog__hint">
+              填写技能名称与描述，创建后将出现在左侧列表「新建技能」下。
+            </p>
+            <div class="skill-add-dialog__field">
+              <label class="skill-add-dialog__label">技能名称</label>
+              <Input
+                v-model="newSkillName"
+                type="text"
+                placeholder="例如：my-skill"
+                class="skill-add-dialog__input"
+                @keydown.enter.prevent="onNewSkillConfirm"
+              />
+            </div>
+            <div class="skill-add-dialog__field">
+              <label class="skill-add-dialog__label">技能描述</label>
+              <Input
+                v-model="newSkillDescription"
+                type="text"
+                placeholder="简短描述该技能的用途"
+                class="skill-add-dialog__input"
+              />
+            </div>
+            <div class="skill-add-dialog__actions">
+              <Button variant="outline" @click="onNewSkillDialogCancel">取消</Button>
+              <Button
+                variant="default"
+                class="skill-add-dialog__confirm"
+                :disabled="!newSkillName.trim()"
+                @click="onNewSkillConfirm"
+              >
+                创建
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </div>
   </Teleport>
 </template>
@@ -834,6 +946,22 @@ function resetSkillAlias(folderPath: string, skillName: string) {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+.skill-add-dialog__field {
+  margin-bottom: 12px;
+}
+
+.skill-add-dialog__field:last-of-type {
+  margin-bottom: 16px;
+}
+
+.skill-add-dialog__label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--foreground);
 }
 
 .skill-add-dialog__input {

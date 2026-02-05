@@ -19,7 +19,13 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  # 使用 Apple 证书签名时需开启；本地无证书构建可设 CSC_IDENTITY_AUTO_DISCOVERY=false
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # macOS 15: 避免主程序与 Electron Framework 签名 Team ID 不一致导致启动崩溃
+  gatekeeperAssess: false
+  strictVerify: false
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
