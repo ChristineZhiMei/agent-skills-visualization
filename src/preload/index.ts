@@ -10,13 +10,14 @@ const api = {
     ipcRenderer.invoke('api:scanFolderForSkills', dirPath)
 }
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+const exposeElectron = () => {
+  ;(window as unknown as { __ELECTRON__?: boolean }).__ELECTRON__ = true
+}
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
+    exposeElectron()
   } catch (error) {
     console.error(error)
   }
@@ -25,4 +26,5 @@ if (process.contextIsolated) {
   window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
+  exposeElectron()
 }

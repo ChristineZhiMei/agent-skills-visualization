@@ -4,6 +4,8 @@ import { SunIcon, MoonIcon } from 'lucide-vue-next'
 import GraphView from './views/GraphView.vue'
 import SkillSidebar from './components/SkillSidebar.vue'
 import Button from './components/ui/button.vue'
+import { storageService, fileService } from './services'
+import { isElectron } from './lib/env'
 import type { SkillFolderItem } from './types/sidebar'
 import type { AliasCache } from './types/aliases'
 
@@ -25,9 +27,8 @@ function isSkillFolderItem(x: unknown): x is SkillFolderItem {
 
 function loadFoldersFromCache(): SkillFolderItem[] {
   try {
-    const raw = localStorage.getItem(FOLDERS_CACHE_KEY)
-    if (raw == null) return []
-    const parsed = JSON.parse(raw) as unknown
+    const parsed = storageService.getItem<unknown>(FOLDERS_CACHE_KEY)
+    if (parsed == null || !Array.isArray(parsed)) return []
     if (!Array.isArray(parsed)) return []
     const result: SkillFolderItem[] = []
     for (const item of parsed) {
@@ -50,18 +51,13 @@ function loadFoldersFromCache(): SkillFolderItem[] {
 }
 
 function saveFoldersToCache(folders: SkillFolderItem[]) {
-  try {
-    localStorage.setItem(FOLDERS_CACHE_KEY, JSON.stringify(folders))
-  } catch {
-    // 忽略存储失败（如隐私模式）
-  }
+  storageService.setItem(FOLDERS_CACHE_KEY, folders)
 }
 
 function loadAliasCache(): AliasCache {
   try {
-    const raw = localStorage.getItem(ALIAS_CACHE_KEY)
-    if (raw == null) return { directories: {}, skills: {} }
-    const parsed = JSON.parse(raw) as unknown
+    const parsed = storageService.getItem<unknown>(ALIAS_CACHE_KEY)
+    if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) return { directories: {}, skills: {} }
     if (typeof parsed !== 'object' || parsed === null) return { directories: {}, skills: {} }
     const p = parsed as { directories?: unknown; skills?: unknown }
     const dir = p.directories
@@ -76,11 +72,7 @@ function loadAliasCache(): AliasCache {
 }
 
 function saveAliasCache(cache: AliasCache) {
-  try {
-    localStorage.setItem(ALIAS_CACHE_KEY, JSON.stringify(cache))
-  } catch {
-    // 忽略存储失败
-  }
+  storageService.setItem(ALIAS_CACHE_KEY, cache)
 }
 
 const theme = ref<Theme>('dark')
@@ -161,7 +153,7 @@ function closeSidebar() {
 }
 
 function initTheme() {
-  const stored = localStorage.getItem(THEME_KEY) as Theme | null
+  const stored = storageService.getItem<Theme | null>(THEME_KEY)
   if (stored === 'light' || stored === 'dark') theme.value = stored
   applyTheme(theme.value)
 }
@@ -173,7 +165,7 @@ function applyTheme(t: Theme) {
 function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
   applyTheme(theme.value)
-  localStorage.setItem(THEME_KEY, theme.value)
+  storageService.setItem(THEME_KEY, theme.value)
 }
 
 watch(theme, applyTheme)
@@ -199,9 +191,12 @@ watch(
   { immediate: true }
 )
 
-// 初始化主题：在应用挂载后根据本地缓存恢复为上次使用的亮/暗色主题
 onMounted(() => {
   initTheme()
+  if (!isElectron() && fileService.restoreHandles) {
+    const webPaths = folders.value.filter((f) => f.path.startsWith('__web__')).map((f) => f.path)
+    if (webPaths.length) fileService.restoreHandles(webPaths)
+  }
 })
 
 /** 按关键词筛选：名称或描述包含关键词的技能，同步列表与图谱 */

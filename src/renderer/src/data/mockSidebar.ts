@@ -29,8 +29,11 @@ export const mockSkillFolders: SkillFolderItem[] = [
 
 /**
  * 将路径缩写为「头 1～2 字符 + … + 尾路径」
+ * Web 端通过 File System Access API 添加的路径形如 __web__目录名__uuid，优先提取目录名展示
  */
 export function abbreviatePath(path: string, headLen = 2, tailLen = 24): string {
+  const webPrefixMatch = path.match(/^__web__(.+?)__[a-z0-9-]+$/i)
+  if (webPrefixMatch) return webPrefixMatch[1]
   if (path.length <= headLen + tailLen + 3) return path
   const head = path.slice(0, headLen)
   const tail = path.slice(-tailLen)

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { abbreviatePath } from '../data/mockSidebar'
+import { fileService } from '../services'
+import { isElectron } from '../lib/env'
 import type { SkillFolderItem } from '../types/sidebar'
 import type { AliasCache } from '../types/aliases'
 import Button from './ui/button.vue'
@@ -129,46 +131,8 @@ function isExpanded(path: string) {
   return expandedPaths.value.has(path)
 }
 
-/** 调用主进程：打开文件夹选择（优先 window.api，否则 electron.ipcRenderer） */
-function invokeOpenFolderDialog(): Promise<string | null> {
-  if (typeof window.api?.openFolderDialog === 'function') {
-    return window.api.openFolderDialog()
-  }
-  const ipc = (
-    window as unknown as {
-      electron?: { ipcRenderer?: { invoke: (c: string) => Promise<string | null> } }
-    }
-  ).electron?.ipcRenderer
-  if (ipc?.invoke) {
-    return ipc.invoke('api:openFolderDialog')
-  }
-  return Promise.reject(new Error('无法调用系统文件夹选择：api 未就绪'))
-}
-
-/** 调用主进程：扫描目录下 SKILL.md */
-function invokeScanFolderForSkills(
-  dirPath: string
-): Promise<{ path: string; skills: { name: string; description: string }[] }> {
-  if (typeof window.api?.scanFolderForSkills === 'function') {
-    return window.api.scanFolderForSkills(dirPath)
-  }
-  const ipc = (
-    window as unknown as {
-      electron?: {
-        ipcRenderer?: {
-          invoke: (
-            c: string,
-            p: string
-          ) => Promise<{ path: string; skills: { name: string; description: string }[] }>
-        }
-      }
-    }
-  ).electron?.ipcRenderer
-  if (ipc?.invoke) {
-    return ipc.invoke('api:scanFolderForSkills', dirPath)
-  }
-  return Promise.reject(new Error('无法扫描目录：api 未就绪'))
-}
+const supportsLocalFolder = fileService.supportsLocalFolder()
+const isElectronEnv = isElectron()
 
 /** 加号：打开添加文件夹对话框（支持手动填写路径与选择文件夹） */
 function onAddFolder() {
@@ -177,24 +141,42 @@ function onAddFolder() {
   addDialogOpen.value = true
 }
 
-/** 对话框中「选择文件夹」：唤起系统选择并回填路径 */
+/** 对话框中「选择文件夹」：唤起系统选择并扫描，成功后直接添加并关闭 */
 async function onAddDialogPickFolder() {
+  addFolderLoading.value = true
   try {
-    const dirPath = await invokeOpenFolderDialog()
-    if (dirPath) addDialogPath.value = dirPath
+    const result = await fileService.openFolder()
+    if (!result) return
+    const { path: resolvedPath, skills } = result
+    const existing = props.folders.find((f) => f.path === resolvedPath)
+    if (existing) {
+      emit(
+        'update:folders',
+        props.folders.map((f) => (f.path === resolvedPath ? { path: resolvedPath, skills } : f))
+      )
+    } else {
+      emit('update:folders', [...props.folders, { path: resolvedPath, skills }])
+      expandedPaths.value = new Set([...expandedPaths.value, resolvedPath])
+    }
+    addDialogOpen.value = false
+    addDialogPath.value = ''
   } catch (e) {
     console.error('选择文件夹失败:', e)
     alert((e instanceof Error ? e.message : String(e)) || '选择文件夹失败')
+  } finally {
+    addFolderLoading.value = false
   }
 }
 
-/** 对话框中「确定」：根据当前路径扫描并加入列表；若路径已存在则更新该文件夹结构，命名保留 */
+/** 对话框中「确定」：根据手动填写的路径扫描并加入列表（仅 Electron 支持） */
 async function onAddDialogConfirm() {
   const path = addDialogPath.value.trim()
   if (!path) return
   addFolderLoading.value = true
   try {
-    const { path: resolvedPath, skills } = await invokeScanFolderForSkills(path)
+    const result = await fileService.refreshFolder(path)
+    if (!result) return
+    const { path: resolvedPath, skills } = result
     const existing = props.folders.find((f) => f.path === resolvedPath)
     if (existing) {
       emit(
@@ -277,6 +259,7 @@ function onMinusOrCancel() {
 /** 对勾：确认删除选中的记录（仅删存储，不删磁盘文件夹） */
 function onConfirmDelete() {
   const toRemove = selectedToDelete.value
+  toRemove.forEach((path) => fileService.removeHandle?.(path))
   emit(
     'update:folders',
     props.folders.filter((f) => !toRemove.has(f.path))
@@ -299,14 +282,18 @@ function isSelectedToDelete(path: string) {
 
 /** 刷新：根据当前一层目录重新读取各目录下 SKILL.md，更新二级技能列表；虚拟文件夹不扫描、原样保留 */
 async function onRefresh() {
-  if (refreshLoading.value || props.folders.length === 0 || !window.api?.scanFolderForSkills) return
+  if (refreshLoading.value || props.folders.length === 0 || !supportsLocalFolder) return
   refreshLoading.value = true
   try {
     const next = await Promise.all(
       props.folders.map(async (f) => {
         if (f.path === VIRTUAL_NEW_SKILLS_PATH) return f
-        const res = await window.api!.scanFolderForSkills(f.path)
-        return { path: res.path, skills: res.skills }
+        try {
+          const res = await fileService.refreshFolder(f.path)
+          return res ? { path: res.path, skills: res.skills } : f
+        } catch {
+          return f
+        }
       })
     )
     emit('update:folders', next)
@@ -462,7 +449,7 @@ function resetSkillAlias(folderPath: string, skillName: string) {
                   <FilePlus class="size-4" />
                 </Button>
                 <Button
-                  v-if="!isDeleteMode"
+                  v-if="!isDeleteMode && supportsLocalFolder"
                   variant="default"
                   size="icon"
                   class="skill-panel__btn-square skill-panel__btn-add h-9 w-9"
@@ -492,6 +479,7 @@ function resetSkillAlias(folderPath: string, skillName: string) {
                   <X v-else class="size-4" />
                 </Button>
                 <Button
+                  v-if="supportsLocalFolder"
                   variant="outline"
                   size="icon"
                   class="skill-panel__btn-square h-9 w-9"
@@ -698,8 +686,10 @@ function resetSkillAlias(folderPath: string, skillName: string) {
         >
           <div class="skill-add-dialog__box">
             <h3 id="skill-add-dialog-title" class="skill-add-dialog__title">添加 skill 文件夹</h3>
-            <p class="skill-add-dialog__hint">填写文件夹路径，或点击「选择文件夹」从系统选择。</p>
-            <div class="skill-add-dialog__row">
+            <p class="skill-add-dialog__hint">
+              {{ isElectronEnv ? '填写文件夹路径，或点击「选择文件夹」从系统选择。' : '点击「选择文件夹」选择本地目录。' }}
+            </p>
+            <div v-if="isElectronEnv" class="skill-add-dialog__row">
               <Input
                 v-model="addDialogPath"
                 type="text"
@@ -707,17 +697,26 @@ function resetSkillAlias(folderPath: string, skillName: string) {
                 class="skill-add-dialog__input"
                 @keydown.enter="onAddDialogConfirm"
               />
-              <Button
-                variant="outline"
-                class="skill-add-dialog__pick"
-                @click="onAddDialogPickFolder"
-              >
+              <Button variant="outline" class="skill-add-dialog__pick" @click="onAddDialogPickFolder">
                 选择文件夹
               </Button>
             </div>
+            <template v-else>
+              <div class="skill-add-dialog__row">
+                <Button
+                  variant="default"
+                  class="skill-add-dialog__pick w-full"
+                  :disabled="addFolderLoading"
+                  @click="onAddDialogPickFolder"
+                >
+                  {{ addFolderLoading ? '扫描中…' : '选择文件夹' }}
+                </Button>
+              </div>
+            </template>
             <div class="skill-add-dialog__actions">
               <Button variant="outline" @click="onAddDialogCancel">取消</Button>
               <Button
+                v-if="isElectronEnv"
                 variant="default"
                 class="skill-add-dialog__confirm"
                 :disabled="addFolderLoading || !addDialogPath.trim()"

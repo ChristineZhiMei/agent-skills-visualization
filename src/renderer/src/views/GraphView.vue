@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import gsap from 'gsap'
 import * as d3 from 'd3'
+import { abbreviatePath } from '../data/mockSidebar'
 import type { GraphNode, GraphEdge } from '../types/graph'
 import type { SkillFolderItem } from '../types/sidebar'
 import type { AliasCache } from '../types/aliases'
@@ -58,7 +59,7 @@ function buildGraphFromFolders(
   const edgesList: GraphEdge[] = []
   for (const folder of folders) {
     const dirId = folder.path
-    const dirLabel = aliases.directories[dirId] ?? folder.path
+    const dirLabel = aliases.directories[dirId] ?? abbreviatePath(folder.path)
     nodesList.push({
       id: dirId,
       label: dirLabel,

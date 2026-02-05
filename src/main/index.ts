@@ -4,36 +4,9 @@ import { readdir, readFile, access } from 'fs/promises'
 import type { Dirent } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { parseSkillMd } from '../shared/parseSkillMd'
 
 const SKILL_FILENAME = 'SKILL.md'
-
-/** 从 SKILL.md 内容解析 name、description（支持 YAML frontmatter 或首个 # 标题） */
-function parseSkillMd(content: string): { name: string; description: string } | null {
-  const trimmed = content.trim()
-  if (!trimmed) return null
-
-  // 优先解析 YAML frontmatter: --- \n name: xxx \n description: xxx (可多行) \n ---
-  const frontMatch = trimmed.match(/^---\s*\n([\s\S]*?)\n---/)
-  if (frontMatch) {
-    const block = frontMatch[1]
-    const nameMatch = block.match(/^name:\s*(.+?)(?:\n|$)/m)
-    const descMatch = block.match(/^description:\s*([\s\S]*?)(?=\n\w+:|\s*$)/m)
-    const name = nameMatch ? nameMatch[1].trim() : ''
-    const description = descMatch ? descMatch[1].trim().replace(/\n+/g, ' ') : ''
-    if (name) return { name, description }
-  }
-
-  // 否则取首个 # 标题为 name，其后一段为 description
-  const firstLine = trimmed.split('\n')[0] ?? ''
-  const nameFromHeading = firstLine.replace(/^#+\s*/, '').trim()
-  if (nameFromHeading) {
-    const rest = trimmed.slice(trimmed.indexOf('\n') + 1).trim()
-    const desc = rest.split(/\n\n/)[0]?.replace(/\n/g, ' ').trim() ?? ''
-    return { name: nameFromHeading, description: desc }
-  }
-
-  return null
-}
 
 /** 将路径中的 ~ 展开为用户主目录（便于对话框内手动填写） */
 function resolvePath(inputPath: string): string {
