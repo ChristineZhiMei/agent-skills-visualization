@@ -154,6 +154,18 @@ function createWebFileService(): FileService {
         if (handle) handleMap.set(pathOrId, handle)
       }
       if (!handle) return Promise.reject(new Error('无法刷新：目录句柄已失效，请重新添加'))
+      // 刷新时重新请求读权限，确保按当前目录重新访问并读取文件（避免使用缓存）
+      const h = handle as FileSystemHandle & {
+        queryPermission?(opts: { mode: string }): Promise<string>
+        requestPermission?(opts: { mode: string }): Promise<string>
+      }
+      if (typeof h.queryPermission === 'function') {
+        const state = await h.queryPermission({ mode: 'read' })
+        if (state !== 'granted' && typeof h.requestPermission === 'function') {
+          const granted = await h.requestPermission({ mode: 'read' })
+          if (granted !== 'granted') return Promise.reject(new Error('无法刷新：需要重新授权读取该目录'))
+        }
+      }
       return scanFromHandle(handle, pathOrId)
     },
     supportsLocalFolder(): boolean {
